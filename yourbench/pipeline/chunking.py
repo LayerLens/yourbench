@@ -168,12 +168,12 @@ def _parse_chunking_parameters(config: Dict[str, Any]) -> ChunkingParameters:
     """
     chunking_params = config.get("pipeline", {}).get("chunking", {}).get("chunking_configuration", {})
     return ChunkingParameters(
-        l_min_tokens=chunking_params.get("l_min_tokens", 64),
-        l_max_tokens=chunking_params.get("l_max_tokens", 128),
-        tau_threshold=chunking_params.get("tau_threshold", 0.3),
+        l_min_tokens=chunking_params.get("l_min_tokens", 128),
+        l_max_tokens=chunking_params.get("l_max_tokens", 256),
+        tau_threshold=chunking_params.get("tau_threshold", 0.7),
         h_min=chunking_params.get("h_min", 2),
-        h_max=chunking_params.get("h_max", 3),
-        num_multihops_factor=chunking_params.get("num_multihops_factor", 2),
+        h_max=chunking_params.get("h_max", 5),
+        num_multihops_factor=chunking_params.get("num_multihops_factor", 1),
         chunking_mode=chunking_params.get("chunking_mode", "fast_chunking"),
     )
 
@@ -595,7 +595,11 @@ def _chunk_document_fast(
         list[SingleHopChunk]: A list of token-based chunks.
     """
     text = " ".join(sentences)
-    chunk_texts = split_into_token_chunks(text, chunk_tokens=l_max_tokens, overlap=0)
+    chunk_texts = split_into_token_chunks(
+        text,
+        chunk_tokens=l_max_tokens,
+        overlap=0,
+    )
 
     return [SingleHopChunk(chunk_id=f"{doc_id}_{i}", chunk_text=chunk) for i, chunk in enumerate(chunk_texts)]
 
@@ -645,7 +649,9 @@ def _multihop_chunking(
         num_multihops_target = max(1, total_single_hops // num_multihops_factor)
 
     if np.prod((num_multihops_target, effective_h_max)) > total_single_hops:
-        logger.warning(f"Target {num_multihops_target} is too high for given sample size and effective_h_max")
+        logger.warning(
+            f"Target {num_multihops_target} is too high for given sample size: {total_single_hops} and effective_h_max: {effective_h_max}"
+        )
         num_multihops_target = total_single_hops // effective_h_max
 
     logger.info(

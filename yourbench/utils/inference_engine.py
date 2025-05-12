@@ -2,6 +2,7 @@
 Inference Engine For Yourbench - Now with true concurrency throttling.
 """
 
+import os
 import time
 import uuid
 import asyncio
@@ -26,8 +27,14 @@ class Model:
     # You can find the list of available providers here: https://huggingface.co/docs/huggingface_hub/guides/inference#supported-providers-and-tasks
     provider: str | None = None
     base_url: str | None = None
-    api_key: str | None = None
+    api_key: str | None = field(default=None, repr=False)
+    bill_to: str | None = None
+
     max_concurrent_requests: int = 16
+
+    def __post_init__(self):
+        if self.api_key is None:
+            self.api_key = os.getenv("HF_TOKEN", None)
 
 
 @dataclass
@@ -74,6 +81,7 @@ async def _get_response(model: Model, inference_call: InferenceCall) -> str:
         base_url=model.base_url,
         api_key=model.api_key,
         provider=model.provider,
+        bill_to=model.bill_to,
         timeout=GLOBAL_TIMEOUT,
         headers={"X-Request-ID": request_id},
     )
