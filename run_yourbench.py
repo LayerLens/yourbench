@@ -5,9 +5,30 @@ import yaml
 import logging
 from pathlib import Path
 
+from yourbench.utils.convert_to_excel_module import convert_datasets_to_excel
+from yourbench.utils.convert_to_atlas_module import convert_dataset
+
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+def zip_multiple_directories(directories, base_dir, output_zip_path):
+    """
+    Zip multiple directories into a single zip archive, preserving their structure relative to base_dir.
+    Args:
+        directories (list): List of Path or str directories to include.
+        base_dir (Path or str): Base directory for relative paths in zip.
+        output_zip_path (Path or str): Path to the output zip file.
+    """
+    logger.info(f"Zipping directories {directories} into {output_zip_path}")
+    with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for directory in directories:
+            for root, _, files in os.walk(directory):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, base_dir)
+                    zipf.write(file_path, arcname)
+    logger.info("Zipping completed for: " + ", ".join([str(d) for d in directories]))
 
 def download_from_s3(bucket_name, object_key, local_path):
     """Download file from S3 bucket"""
@@ -88,6 +109,7 @@ def main():
     raw_data_dir = base_dir / "task/data/raw"
     dataset_dir = base_dir / "task/dataset"
     config_path = dataset_dir / "config.yaml"
+    excel_dir = base_dir / "task/excel"
     output_zip_path = base_dir / "output.zip"
     
     # Create required directories
@@ -131,10 +153,46 @@ pipeline:
     # Step 4: Run yourbench
     run_yourbench(config_path)
     
-    # Step 5: Zip dataset directory and upload to S3
-    zip_directory(dataset_dir, output_zip_path)
+    # Step 5: Convert datasets to Excel
+    convert_datasets_to_excel(str(dataset_dir), str(excel_dir), logger=logger)
+
+    # Step 6: Convert to Atlas format
+    try:
+        atlas_dir = base_dir / "task/atlas_dataset"
+        lighteval_path = dataset_dir / "lighteval"
+        if lighteval_path.exists():
+            logger.info(f"Converting lighteval dataset to Atlas format")
+            atlas_output = convert_dataset(
+                hf_path=str(lighteval_path),
+                name="atlas_dataset",
+                system_prompt=(
+                    "You are an expert answering benchmark questions. "
+                    "Give a very concise answer."
+                ),
+                full_description="Dataset for evaluating built-in knowledge",
+                short_description="Fact-based knowledge",
+                category="YourBench",
+                output_dir=str(base_dir / "task"),  # creates task/atlas_dataset/
+            )
+            logger.info(f"Atlas conversion completed.")
+        else:
+            logger.warning(f"Lighteval dataset not found at {lighteval_path}, skipping Atlas conversion")
+    except Exception as e:
+        logger.error(f"Atlas conversion failed: {e}")
+        logger.warning("Continuing with the rest of the pipeline")
+
+    # Step 7: Zip the dataset, excel, and atlas directories into a single archive
+    directories_to_zip = [dataset_dir, excel_dir]
+    atlas_dataset_dir = base_dir / "task/atlas_dataset"
+    if atlas_dataset_dir.exists():
+        logger.info(f"Including Atlas dataset directory in zip: {atlas_dataset_dir}")
+        directories_to_zip.append(atlas_dataset_dir)
+    zip_multiple_directories(directories_to_zip, base_dir, output_zip_path)
+
+    # Step 8: Upload the combined zip to S3
     upload_to_s3(output_zip_path, output_bucket, output_key)
-    
+    logger.info("Combined zip uploaded to S3 successfully")
+
     logger.info("All tasks completed successfully")
 
 if __name__ == "__main__":
