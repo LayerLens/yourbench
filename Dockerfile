@@ -36,10 +36,10 @@ ENV AWS_DEFAULT_REGION="us-east-1"
 ENV WORKDIR="/app"
 
 # Create a startup script to run the processing workflow
-RUN echo '#!/bin/bash\n\
-echo "Running yourbench workflow..."\n\
-exec python run_yourbench.py' > /app/entrypoint.sh \
-    && chmod +x /app/entrypoint.sh
+RUN printf '#!/bin/bash\n\
+    echo "Running yourbench workflow..."\n\
+    exec python run_yourbench.py\n' > /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh
 
 # Use the startup script as entry point
 ENTRYPOINT ["/app/entrypoint.sh"]
