@@ -9,49 +9,37 @@ from yourbench.utils.convert_to_excel_module import convert_datasets_to_excel
 from yourbench.utils.convert_to_atlas_module import convert_dataset
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
-def zip_multiple_directories(directories, base_dir, output_zip_path):
-    """
-    Zip multiple directories into a single zip archive, preserving their structure relative to base_dir.
-    Args:
-        directories (list): List of Path or str directories to include.
-        base_dir (Path or str): Base directory for relative paths in zip.
-        output_zip_path (Path or str): Path to the output zip file.
-    """
-    logger.info(f"Zipping directories {directories} into {output_zip_path}")
-    with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for directory in directories:
-            for root, _, files in os.walk(directory):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, base_dir)
-                    zipf.write(file_path, arcname)
-    logger.info("Zipping completed for: " + ", ".join([str(d) for d in directories]))
 
 def download_from_s3(bucket_name, object_key, local_path):
     """Download file from S3 bucket"""
     logger.info(f"Downloading {object_key} from bucket {bucket_name} to {local_path}")
-    s3_client = boto3.client('s3')
+    s3_client = boto3.client("s3")
     s3_client.download_file(bucket_name, object_key, local_path)
     logger.info("Download completed")
+
 
 def unzip_file(zip_path, extract_dir):
     """Unzip file to specified directory"""
     logger.info(f"Extracting {zip_path} to {extract_dir}")
     os.makedirs(extract_dir, exist_ok=True)
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
         zip_ref.extractall(extract_dir)
     logger.info("Extraction completed")
+
 
 def create_config_file(config_content, config_path):
     """Create config.yaml file"""
     logger.info(f"Creating config file at {config_path}")
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    with open(config_path, 'w') as f:
+    with open(config_path, "w") as f:
         yaml.dump(yaml.safe_load(config_content), f)
     logger.info("Config file created")
+
 
 def run_yourbench(config_path):
     """Run yourbench with the provided config using direct Python API call."""
@@ -66,7 +54,9 @@ def run_yourbench(config_path):
         try:
             yourbench_main()
         except SystemExit as e:
-            logger.info(f"yourbench exited with code {e.code} (caught SystemExit, continuing)")
+            logger.info(
+                f"yourbench exited with code {e.code} (caught SystemExit, continuing)"
+            )
         finally:
             sys.argv = sys_argv_backup
         logger.info("yourbench execution completed successfully")
@@ -75,53 +65,52 @@ def run_yourbench(config_path):
         logger.error(f"Error during yourbench execution: {str(e)}")
         raise
 
-def zip_directory(dir_path, output_path):
-    """Zip directory to output path"""
-    logger.info(f"Zipping directory {dir_path} to {output_path}")
-    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for root, _, files in os.walk(dir_path):
-            for file in files:
-                file_path = os.path.join(root, file)
-                zipf.write(file_path, os.path.relpath(file_path, os.path.join(dir_path, '..')))
-    logger.info("Zipping completed")
 
 def upload_to_s3(local_path, bucket_name, object_key):
-    """Upload file to S3 bucket"""
     logger.info(f"Uploading {local_path} to bucket {bucket_name} as {object_key}")
-    s3_client = boto3.client('s3')
+    s3_client = boto3.client("s3")
     s3_client.upload_file(local_path, bucket_name, object_key)
     logger.info("Upload completed")
 
+
+def upload_directory_to_s3(directory_path, bucket_name, s3_prefix=""):
+    for filename in os.listdir(directory_path):
+        local_path = os.path.join(directory_path, filename)
+        if os.path.isfile(local_path):
+            object_key = os.path.join(s3_prefix, filename) if s3_prefix else filename
+            upload_to_s3(local_path, bucket_name, object_key)
+
+
 def main():
     # Get environment variables
-    input_bucket = os.environ.get('INPUT_S3_BUCKET')
-    input_key = os.environ.get('INPUT_S3_KEY')
-    output_bucket = os.environ.get('OUTPUT_S3_BUCKET')
-    output_key = os.environ.get('OUTPUT_S3_KEY')
-    
+    benchmark_name = os.environ.get("BENCHMARK_NAME")
+    input_bucket = os.environ.get("INPUT_S3_BUCKET")
+    input_key = os.environ.get("INPUT_S3_KEY")
+    output_bucket = os.environ.get("OUTPUT_S3_BUCKET")
+    output_key = os.environ.get("OUTPUT_S3_KEY")
+
     if not all([input_bucket, input_key, output_bucket, output_key]):
         logger.error("Missing required environment variables")
         raise ValueError("Required environment variables are missing")
-    
+
     # Define local paths
-    base_dir = Path(os.environ.get('WORKDIR', '/app'))
+    base_dir = Path(os.environ.get("WORKDIR", "/app"))
     download_path = base_dir / "input.zip"
     raw_data_dir = base_dir / "task/data/raw"
     dataset_dir = base_dir / "task/dataset"
     config_path = dataset_dir / "config.yaml"
     excel_dir = base_dir / "task/excel"
-    output_zip_path = base_dir / "output.zip"
-    
+
     # Create required directories
     os.makedirs(raw_data_dir, exist_ok=True)
     os.makedirs(dataset_dir, exist_ok=True)
-    
+
     # Step 1: Download file from S3
     download_from_s3(input_bucket, input_key, download_path)
-    
+
     # Step 2: Unzip file to raw data directory
     unzip_file(download_path, raw_data_dir)
-    
+
     # Step 3: Create config.yaml
     config_content = """
 hf_configuration:
@@ -149,22 +138,21 @@ pipeline:
   citation_score_filtering:
 """
     create_config_file(config_content, config_path)
-    
+
     # Step 4: Run yourbench
     run_yourbench(config_path)
-    
+
     # Step 5: Convert datasets to Excel
     convert_datasets_to_excel(str(dataset_dir), str(excel_dir), logger=logger)
 
     # Step 6: Convert to Atlas format
     try:
-        atlas_dir = base_dir / "task/atlas_dataset"
         lighteval_path = dataset_dir / "lighteval"
         if lighteval_path.exists():
             logger.info(f"Converting lighteval dataset to Atlas format")
-            atlas_output = convert_dataset(
+            convert_dataset(
                 hf_path=str(lighteval_path),
-                name="atlas_dataset",
+                name=benchmark_name,
                 system_prompt=(
                     "You are an expert answering benchmark questions. "
                     "Give a very concise answer."
@@ -176,24 +164,18 @@ pipeline:
             )
             logger.info(f"Atlas conversion completed.")
         else:
-            logger.warning(f"Lighteval dataset not found at {lighteval_path}, skipping Atlas conversion")
+            logger.warning(
+                f"Lighteval dataset not found at {lighteval_path}, skipping Atlas conversion"
+            )
     except Exception as e:
         logger.error(f"Atlas conversion failed: {e}")
         logger.warning("Continuing with the rest of the pipeline")
 
-    # Step 7: Zip the dataset, excel, and atlas directories into a single archive
-    directories_to_zip = [dataset_dir, excel_dir]
-    atlas_dataset_dir = base_dir / "task/atlas_dataset"
-    if atlas_dataset_dir.exists():
-        logger.info(f"Including Atlas dataset directory in zip: {atlas_dataset_dir}")
-        directories_to_zip.append(atlas_dataset_dir)
-    zip_multiple_directories(directories_to_zip, base_dir, output_zip_path)
-
-    # Step 8: Upload the combined zip to S3
-    upload_to_s3(output_zip_path, output_bucket, output_key)
-    logger.info("Combined zip uploaded to S3 successfully")
-
+    upload_directory_to_s3(
+        base_dir / "task" / benchmark_name, output_bucket, output_key
+    )
     logger.info("All tasks completed successfully")
+
 
 if __name__ == "__main__":
     main()
