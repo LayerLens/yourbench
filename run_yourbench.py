@@ -84,6 +84,7 @@ def upload_directory_to_s3(directory_path, bucket_name, s3_prefix=""):
 def main():
     # Get environment variables
     benchmark_name = os.environ.get("BENCHMARK_NAME")
+    benchmark_system_prompt = os.environ.get("BENCHMARK_SYSTEM_PROMPT")
     input_bucket = os.environ.get("INPUT_S3_BUCKET")
     input_key = os.environ.get("INPUT_S3_KEY")
     output_bucket = os.environ.get("OUTPUT_S3_BUCKET")
@@ -153,10 +154,7 @@ pipeline:
             convert_dataset(
                 hf_path=str(lighteval_path),
                 name=benchmark_name,
-                system_prompt=(
-                    "You are an expert answering benchmark questions. "
-                    "Give a very concise answer."
-                ),
+                system_prompt=benchmark_system_prompt,
                 full_description="Dataset for evaluating built-in knowledge",
                 short_description="Fact-based knowledge",
                 category="YourBench",

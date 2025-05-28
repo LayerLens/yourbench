@@ -25,6 +25,8 @@ RUN pip install --upgrade pip && \
 RUN yourbench --version || echo "Yourbench installation verification failed but continuing build"
 
 # Environment variables (will be overridden at runtime)
+ENV BENCHMARK_NAME=""
+ENV BENCHMARK_SYSTEM_PROMPT=""
 ENV INPUT_S3_BUCKET=""
 ENV INPUT_S3_KEY=""
 ENV OUTPUT_S3_BUCKET=""

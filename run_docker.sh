@@ -19,6 +19,7 @@ if [ -z "$INPUT_S3_BUCKET" ] || [ -z "$INPUT_S3_KEY" ] || [ -z "$OUTPUT_S3_BUCKE
     echo "Error: Required environment variables are not set."
     echo "Please set these variables before running:"
     echo "  - BENCHMARK_NAME: benchmark name"
+    echo "  - BENCHMARK_SYSTEM_PROMPT: benchmark system prompt"
     echo "  - INPUT_S3_BUCKET: S3 bucket containing input data"
     echo "  - INPUT_S3_KEY: S3 key for input data zip file"
     echo "  - OUTPUT_S3_BUCKET: S3 bucket for output data"
@@ -27,6 +28,7 @@ if [ -z "$INPUT_S3_BUCKET" ] || [ -z "$INPUT_S3_KEY" ] || [ -z "$OUTPUT_S3_BUCKE
     echo ""
     echo "Example:"
     echo "  export BENCHMARK_NAME=benchmark-name"
+    echo "  export BENCHMARK_SYSTEM_PROMPT=benchmark-system-prompt"
     echo "  export INPUT_S3_BUCKET=my-input-bucket"
     echo "  export INPUT_S3_KEY=input/data.zip"
     echo "  export OUTPUT_S3_BUCKET=my-output-bucket"
@@ -39,6 +41,7 @@ fi
 echo "Running yourbench processor Docker container..."
 docker run --rm \
     -e BENCHMARK_NAME="$BENCHMARK_NAME" \
+    -e BENCHMARK_SYSTEM_PROMPT="$BENCHMARK_SYSTEM_PROMPT" \
     -e INPUT_S3_BUCKET="$INPUT_S3_BUCKET" \
     -e INPUT_S3_KEY="$INPUT_S3_KEY" \
     -e OUTPUT_S3_BUCKET="$OUTPUT_S3_BUCKET" \
