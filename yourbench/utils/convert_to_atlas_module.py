@@ -13,7 +13,7 @@ def _scorer_yaml(name: str) -> str:
           type: llm_judge
           options:
             regex_pattern: ''
-            judge_model: google/gemini-2.5-flash-preview-05-20
+            judge_model: gemini-2.5-flash-preview-05-20
             judge_prompt: |-
               Your job is to look at a question, a gold target, and a predicted answer, and then assign a grade of either ["CORRECT", "INCORRECT", "NOT_ATTEMPTED"].
               First, I will give examples of each grade, and then you will grade a new example.
