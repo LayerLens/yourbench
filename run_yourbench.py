@@ -120,7 +120,7 @@ hf_configuration:
 local_dataset_dir: task/dataset
 
 model_list:
-  - model_name: openai/gpt-4.1
+  - model_name: openai/gpt-4o
     provider: null
     base_url: "https://openrouter.ai/api/v1"
     api_key: $OPENROUTER_API_KEY
@@ -136,6 +136,8 @@ pipeline:
   single_shot_question_generation:
   multi_hop_question_generation:
   lighteval:
+    run: true
+    include_document_text: false  # Set to false to exclude full document text from the dataset (saves memory)
   citation_score_filtering:
 """
     create_config_file(config_content, config_path)

@@ -12,10 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy all yourbench files
 COPY . .
 
-# Install python3-pip
-RUN apt-get update && apt-get install -y --no-install-recommends python3-pip && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
 # Install dependencies and yourbench in editable mode
 RUN pip install --upgrade pip && \
     pip install boto3 pyyaml awscli && \
