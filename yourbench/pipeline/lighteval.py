@@ -18,7 +18,7 @@ to populate a final dataset with the following columns:
 8) chunk_ids               (List[str]) - The chunk ID(s) used in forming the question.
 9) question_generating_model (str) - The HF model ID that generated this question.
 10) chunks                 (List[str]) - The actual chunk text(s) the question came from.
-11) document               (str)  - The entire document text.
+11) document               (str)  - The entire document text (can be excluded with include_document_text=false).
 
 Configuration Example:
 ----------------------
@@ -29,13 +29,14 @@ pipeline:
     multi_hop_subset: multi_hop_questions_deduplicated
     chunked_subset: chunked_documents
     output_subset: lighteval
+    include_document_text: false  # Optional: Set to false to exclude full document text (saves memory)
 
 Usage:
 ------
 1. Load single-shot and multi-hop question subsets.
 2. Merge them into a single dataset, marking 'kind' as "single_shot" or "multi_hop."
 3. For each question row, look up the relevant chunks in the chunked dataset to
-   populate 'chunks' and the full 'document' text.
+   populate 'chunks' and the full 'document' text (if include_document_text is true).
 4. Save final dataset to HF or local path as configured.
 """
 
@@ -76,6 +77,7 @@ def run(config: Dict[str, Any]) -> None:
             - config["pipeline"]["lighteval"]["multi_hop_subset"]   (str): Subset containing multi-hop questions.
             - config["pipeline"]["lighteval"]["chunked_subset"]     (str): Subset containing chunked documents.
             - config["pipeline"]["lighteval"]["output_subset"]      (str): Subset name for saving final dataset.
+            - config["pipeline"]["lighteval"]["include_document_text"] (bool, optional): Whether to include full document text in the final dataset. Default is True.
 
     Returns:
         None. The merged dataset is saved to disk or HF Hub as configured.
@@ -139,6 +141,11 @@ def run(config: Dict[str, Any]) -> None:
         if doc_id in doc_meta_map:
             doc_meta_map[doc_id].update({"document_summary": row.get("document_summary")})
 
+    # Check if we should include document text
+    include_document_text = stage_cfg.get("include_document_text", True)
+    if not include_document_text:
+        logger.info("Document text will be excluded from the final dataset (include_document_text=False)")
+
     # Helper functions to transform a row
     def make_single_shot_record(row: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -150,7 +157,7 @@ def run(config: Dict[str, Any]) -> None:
 
         # Grab doc meta
         doc_meta = doc_meta_map.get(doc_id, {})
-        doc_text = doc_meta.get("document_text", "")
+        doc_text = doc_meta.get("document_text", "") if include_document_text else ""
         doc_summary = doc_meta.get("document_summary", "")
         chunk_text_map = doc_meta.get("chunks_map", {})
         # chunk text is chunk_text_map[chunk_id] if it exists
@@ -197,7 +204,7 @@ def run(config: Dict[str, Any]) -> None:
         # e.g. row["source_chunk_ids"]: List[str]
         chunk_ids: List[str] = row.get("source_chunk_ids", [])
         doc_meta = doc_meta_map.get(doc_id, {})
-        doc_text = doc_meta.get("document_text", "")
+        doc_text = doc_meta.get("document_text", "") if include_document_text else ""
         doc_summary = doc_meta.get("document_summary", "")
         chunk_text_map = doc_meta.get("chunks_map", {})
 
