@@ -134,7 +134,13 @@ pipeline:
   summarization:
   chunking:
   single_shot_question_generation:
+    chunk_sampling:
+      mode: "count"
+      value: 50
   multi_hop_question_generation:
+    chunk_sampling:
+      mode: "count"
+      value: 50
   lighteval:
     run: true
     include_document_text: false  # Set to false to exclude full document text from the dataset (saves memory)
