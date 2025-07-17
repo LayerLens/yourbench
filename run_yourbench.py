@@ -134,7 +134,13 @@ pipeline:
   summarization:
   chunking:
   single_shot_question_generation:
+    chunk_sampling:
+      mode: "count"
+      value: 50
   multi_hop_question_generation:
+    chunk_sampling:
+      mode: "count"
+      value: 50
   lighteval:
   citation_score_filtering:
 """
