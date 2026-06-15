@@ -14,6 +14,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Default instructions injected into BOTH question-generation stages
+# (single-shot + multi-hop) as `additional_instructions`. yourbench's default
+# is "Generate questions to test an undergraduate student", which yields
+# generic, self-contained comprehension questions that frontier models can
+# answer WITHOUT the source — useless for measuring document-specific
+# knowledge. This forces closed-book, fact-anchored questions instead.
+# Override per-deployment with the QUESTION_GENERATION_INSTRUCTIONS env var.
+DEFAULT_CLOSED_BOOK_INSTRUCTIONS = (
+    "Generate CLOSED-BOOK, factual-recall questions that test whether a model has the "
+    "specific knowledge contained in this document. Every question MUST hinge on a concrete, "
+    "document-specific detail stated in the source — an exact name, number, value, configuration, "
+    "limit, default, sequence of steps, or described behavior. A knowledgeable expert who has NOT "
+    "read this document must be UNABLE to answer it from general domain knowledge or from the wording "
+    "of the question itself. Do NOT generate generic questions such as 'what are the benefits of X', "
+    "'how does X enhance/improve Y', or 'why is X important' — those are answerable by reasoning alone. "
+    "Keep each answer short, concrete, and verifiable against the source (a fact, value, name, or brief "
+    "enumeration), not an open-ended explanation. Prefer questions a generic model would plausibly get "
+    "wrong without this document."
+)
+
 
 def download_from_s3(bucket_name, object_key, local_path):
     """Download file from S3 bucket"""
@@ -138,7 +158,22 @@ pipeline:
   lighteval:
   citation_score_filtering:
 """
-    create_config_file(config_content, config_path)
+    # Inject closed-book question-generation instructions into both generation
+    # stages. Without this, yourbench uses its generic default and produces
+    # questions answerable without the source document.
+    question_instructions = os.environ.get(
+        "QUESTION_GENERATION_INSTRUCTIONS", DEFAULT_CLOSED_BOOK_INSTRUCTIONS
+    ).strip()
+    config_dict = yaml.safe_load(config_content)
+    pipeline_cfg = config_dict.setdefault("pipeline", {})
+    for stage in ("single_shot_question_generation", "multi_hop_question_generation"):
+        stage_cfg = pipeline_cfg.get(stage) or {}
+        stage_cfg["additional_instructions"] = question_instructions
+        pipeline_cfg[stage] = stage_cfg
+    logger.info(f"Creating config file at {config_path} (closed-book question instructions applied)")
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    with open(config_path, "w") as f:
+        yaml.dump(config_dict, f)
 
     # Step 4: Run yourbench
     run_yourbench(config_path)
