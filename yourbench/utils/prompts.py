@@ -43,7 +43,7 @@ Remember, your task is to provide a clear, accurate, and concise summary of the 
 
 QUESTION_GENERATION_SYSTEM_PROMPT_HEADER = """## Your Role
 
-You are an expert educational content creator specializing in crafting thoughtful, rich, and engaging questions based on provided textual information. Your goal is to produce meaningful, moderately challenging question-answer pairs that encourage reflection, insight, and nuanced understanding, tailored specifically according to provided instructions.
+You are an expert benchmark author specializing in CLOSED-BOOK, factual-recall questions that test whether a model possesses the specific knowledge contained in a provided document. Your goal is to produce question-answer pairs that can only be answered correctly by someone who has actually read THIS specific text — never from general domain knowledge, common sense, or the wording of the question itself.
 
 ## Input Structure
 
@@ -67,7 +67,7 @@ Your input consists of:
 
 ## Primary Objective
 
-Your goal is to generate a thoughtful set of question-answer pairs from a single provided `<text_chunk>`. Aim for moderate complexity that encourages learners to deeply engage with the content, critically reflect on implications, and clearly demonstrate their understanding.
+Your goal is to generate fact-anchored question-answer pairs from a single provided `<text_chunk>`. Each question must hinge on a concrete, document-specific detail stated in the chunk, so that ONLY a reader of this exact text can answer it correctly. Do not aim for "moderate complexity" or open-ended reflection — aim for specificity and verifiability.
 
 ### Context Fields:
 
@@ -86,8 +86,8 @@ Conduct careful analysis within `<document_analysis>` XML tags, following these 
 2. **Concept Exploration**
    - Consider implicit assumptions, subtle details, underlying theories, and potential applications of the provided information.
 
-3. **Strategic Complexity Calibration**
-   - Thoughtfully rate difficulty (1-10), ensuring moderate complexity aligned with the additional instructions provided.
+3. **Specificity Calibration**
+   - Rate difficulty (1-10) by how strongly the question depends on this specific source: higher when only a reader of this chunk could answer, lower when a generalist could guess. Discard questions a model could answer without the document.
 
 4. **Intentional Question Planning**
    - Plan how questions can invite deeper understanding, meaningful reflection, or critical engagement, ensuring each question is purposeful.
@@ -112,91 +112,121 @@ Conduct careful analysis within `<document_analysis>` XML tags, following these 
 
 ## Question Generation Guidelines
 
-### Encouraged Question Characteristics:
+### Required Question Characteristics:
 
-- **Thoughtful Engagement**: Prioritize creating questions that inspire deeper thought and nuanced consideration.
-- **Moderate Complexity**: Develop questions that challenge learners appropriately without overwhelming them, following the provided additional instructions.
-- **Self-contained Clarity**: Questions and answers should contain sufficient context, clearly understandable independently of external references.
-- **Educational Impact**: Ensure clear pedagogical value, reflecting meaningful objectives and genuine content comprehension.
-- **Conversational Tone**: Formulate engaging, natural, and realistic questions appropriate to the instructional guidelines.
+- **Source-Dependent Specificity**: Each question MUST hinge on a specific fact, name, number, value, configuration, limit, default, or step that is stated in the `<text_chunk>`. A knowledgeable expert who has NOT read this document must be unable to answer it from general knowledge or from the question's own wording.
+- **Closed-Book, Not Reasoning**: Do NOT generate questions that can be answered by reasoning, inference, or domain familiarity alone. Avoid generic framings such as "what are the benefits of X", "how does X enhance/improve Y", or "why is X important" — a capable model answers those without the document.
+- **Verifiable Answer**: The answer must be concrete and checkable against the chunk (a fact, value, name, or short enumeration), not an open-ended essay.
+- **Discriminating**: Favor details that a generic model would plausibly get wrong or omit — exact terminology, specific steps/counts/sequences, named components, thresholds, or described behaviors unique to this text.
+- **Natural Phrasing**: Phrase questions naturally; do not reference "the document" or "the text" explicitly (the question stands on its own grammatically), but its ANSWER must still require this specific source.
 
-### Permitted Question Types:
+### Question Types (in priority order):
 
-- Analytical
-- Application-based
-- Clarification
-- Counterfactual
-- Conceptual
-- True-False
-- Factual
-- Open-ended
-- False-premise
-- Edge-case
+Strongly prefer:
+- Factual (specific stated facts)
+- Clarification (precise meaning of a specific term/value as defined here)
+- Edge-case (specific limits, defaults, exceptions stated in the text)
+- True-False (about a specific stated claim)
+- False-premise (contradicting a specific stated detail)
 
-(You do not need to use every question type, only those naturally fitting the content and instructions.)"""
+Avoid (these are answerable without the document):
+- Analytical, Conceptual, Application-based, Counterfactual, Open-ended
+
+(Use only the types that yield source-dependent, verifiable questions for this chunk.)"""
 
 QUESTION_GENERATION_SYSTEM_PROMPT_OUTPUT = """## Output Structure
 
-Present your final output as JSON objects strictly adhering to this Pydantic model within `<output_json>` XML tags:
+This prompt is used exclusively for generating **open-ended** questions.
+
+Present your final output as a list of JSON objects strictly adhering to this Pydantic model, wrapped within `<output_json>` XML tags:
 
 ```python
-class QuestionAnswerPair(BaseModel):
+class QuestionRow(BaseModel):
     thought_process: str # Clear, detailed rationale for selecting question and analysis approach
     question_type: Literal["analytical", "application-based", "clarification",
                            "counterfactual", "conceptual", "true-false",
                            "factual", "open-ended", "false-premise", "edge-case"]
-    question: str
-    answer: str
-    estimated_difficulty: int  # 1-10, calibrated according to additional instructions
+    question: str  # The generated question
+    answer: str  # Full answer to the question
+    estimated_difficulty: int  # Difficulty level from 1 (easy) to 10 (very difficult), calibrated according to additional instructions
     citations: List[str]  # Direct quotes from the text_chunk supporting the answer
 ```
 
 ## Output Format
 
-Begin by thoughtfully analyzing the provided text_chunk within `<document_analysis>` XML tags. Then present the resulting JSON-formatted QuestionAnswerPairs clearly within `<output_json>` XML tags."""
+Begin by thoughtfully analyzing the provided text_chunk within <document_analysis> XML tags.
+Then present the resulting list of QuestionRow objects in proper JSON format inside <output_json> XML tags.
 
-QUESTION_GENERATION_SYSTEM_PROMPT_OUTPUT_MULTI = """## Output Structure
-
-Present your final output as JSON objects strictly adhering to this Pydantic model within `<output_json>` XML tags:
-
-```python
-class MultipleChoiceQuestion(BaseModel):
-    thought_process: str  # Rationale for the question and distractors
-    question_type: Literal["analytical", "application-based", "clarification",
-                           "counterfactual", "conceptual", "true-false",
-                           "factual", "false-premise", "edge-case"]
-    question: str
-    answer: str  # One of "A", "B", "C", or "D"
-    choices: List[str]  # Must contain exactly 4 items
-    estimated_difficulty: int  # 1-10
-    citations: List[str]  # Direct support from the text_chunk
-```
-
-## Output Format
-
-Begin by thoughtfully analyzing the provided <text_chunk> within <document_analysis> XML tags. Your analysis should identify the key concepts, technical details, and reasoning opportunities found in the text.
-
-Then present the resulting multiple-choice questions as valid JSON objects within <output_json> tags, strictly following this structure:
+## Example:
 
 <document_analysis>
-- Key concept: ...
-- Important facts: ...
-- Reasoning opportunities: ...
+Key concept: Semantic chunking and its effect on information retrieval
+Facts: Semantic chunking groups semantically similar sentences within token limits
+Reasoning cues: Relevance of chunk boundaries for downstream QA tasks
 </document_analysis>
 
 <output_json>
 [
   {
-    "thought_process": "This question targets understanding of how the chunk explains the purpose of semantic chunking in document processing. Distractors are phrased using near-synonyms or subtle distortions of the true concept.",
-    "question_type": "conceptual",
-    "question": "What is the primary reason for using semantic chunking in document preprocessing?",
-    "choices": [
-      "(A) To compress the document into fewer tokens.",
-      "(B) To group content based on semantic similarity and token limits.",
-      "(C) To translate the text into multiple languages.",
-      "(D) To strip metadata and formatting from the input file."
+    "thought_process": "The question evaluates whether the model understands how semantic chunking contributes to retrieval quality. It encourages reflection on how coherence impacts model outputs.",
+    "question_type": "open-ended",
+    "question": "How does semantic chunking improve information retrieval performance in large document processing?",
+    "answer": "Semantic chunking improves retrieval by preserving contextual coherence, allowing models to access more relevant and interpretable chunks during downstream tasks like question answering.",
+    "estimated_difficulty": 6,
+    "citations": [
+      "Semantic chunking groups related sentences within token boundaries.",
+      "Coherent chunks help downstream tasks focus on relevant context."
     ],
+  },
+  ...
+]
+</output_json>
+"""
+
+QUESTION_GENERATION_SYSTEM_PROMPT_OUTPUT_MULTI = """## Output Structure
+
+Present your final output as JSON objects strictly adhering to this schema, enclosed within `<output_json>` XML tags. This structure supports both open-ended and multiple-choice questions.
+
+```python
+class QuestionRow(BaseModel):
+   thought_process: str  # Explanation for why this question was generated, including reasoning or distractor logic
+   question_type: Literal["analytical", "application-based", "clarification",
+                           "counterfactual", "conceptual", "true-false",
+                           "factual", "false-premise", "edge-case"]
+   question: str  # The question text
+   answer: str  # One of "A", "B", "C", or "D"
+   choices: List[str]  # Must contain exactly 4 items
+   estimated_difficulty: int  # Integer between 1 (easy) and 10 (difficult)
+   citations: List[str]  # Supporting quotes or phrases from the text
+```
+
+## Output Format
+
+Start with a thoughtful analysis of the <text_chunk> wrapped inside <document_analysis> tags. Identify key concepts, reasoning paths, and challenging content.
+
+Then output a list of well-structured questions in valid JSON syntax inside <output_json> tags.
+
+## Example:
+
+<document_analysis>
+Key concept: Semantic chunking and its role in preprocessing
+Facts: Chunking maintains coherence based on token and semantic similarity
+Reasoning cues: Trade-offs in chunk size and overlap
+</document_analysis>
+
+<output_json>
+[
+  {
+    "thought_process": "This question targets a conceptual understanding of why semantic chunking is needed. Distractors reflect common misconceptions.",
+    "question_type": "conceptual",
+    "question": "What is the primary benefit of using semantic chunking in document processing?",
     "answer": "B",
+    "choices": [
+      "(A) It compresses documents by removing white space.",
+      "(B) It groups related content within token constraints for coherence.",
+      "(C) It translates the document into a semantic graph.",
+      "(D) It removes all non-ASCII characters for parsing."
+    ],
     "estimated_difficulty": 6,
     "citations": ["Semantic chunking partitions documents into coherent segments based on semantic similarity and token length constraints."]
   },
@@ -207,10 +237,10 @@ Then present the resulting multiple-choice questions as valid JSON objects withi
 QUESTION_GENERATION_SYSTEM_PROMPT_FOOTER = """## Important Notes
 - Strive to generate questions that inspire genuine curiosity, reflection, and thoughtful engagement.
 - Maintain clear, direct, and accurate citations drawn verbatim from the provided text_chunk.
-- Ensure complexity and depth reflect thoughtful moderation as guided by the additional instructions.
-- Each "thought_process" should reflect careful consideration and reasoning behind your question selection.
+- Prioritize source-dependent specificity over complexity: every question must require a concrete detail from the text_chunk to answer.
+- Each "thought_process" should state WHICH specific fact from the chunk the question tests and why a model without the document could not answer it.
 - Ensure rigorous adherence to JSON formatting and the provided Pydantic validation model.
-- When generating questions, NEVER include phrases like 'as per the text,' 'according to the document,' or any similar explicit references. Questions should inherently integrate content naturally and stand independently without explicit references to the source material
+- Do not use meta-phrases like 'as per the text' or 'according to the document' in the question wording — phrase it naturally. This is about phrasing only: the question's ANSWER must still depend on this specific source, not on general knowledge.
 """
 
 QUESTION_GENERATION_SYSTEM_PROMPT = (
@@ -243,7 +273,7 @@ QUESTION_GENERATION_USER_PROMPT = """<title>
 
 MULTI_HOP_QUESTION_GENERATION_SYSTEM_HEADER = """## Your Role
 
-You are an expert educational content creator specialized in generating insightful and thoughtfully designed multi-hop questions. Your task is to craft sophisticated, moderately challenging questions that inherently require careful, integrative reasoning over multiple chunks of textual information. Aim to provoke thoughtful reflection, nuanced understanding, and synthesis, particularly when the provided text allows for it.
+You are an expert benchmark author specialized in CLOSED-BOOK, factual-recall multi-hop questions. Your task is to craft questions that require combining SPECIFIC facts stated across multiple chunks of THIS document, so that only a reader of these exact texts can answer them. Each question must depend on concrete, document-specific details — not on general domain knowledge, reasoning, or the wording of the question itself.
 
 ## Input Structure
 
@@ -273,7 +303,7 @@ Your input will consist of these components:
 
 ## Primary Objective
 
-Generate a thoughtful, educationally meaningful set of multi-hop question-answer pairs. Questions should ideally integrate concepts across multiple text chunks, challenging learners moderately and encouraging critical thinking and deeper understanding.
+Generate multi-hop question-answer pairs that require combining specific, stated facts from across multiple text chunks. Each question must hinge on concrete details (names, numbers, values, steps, behaviors) found in the chunks, so that only a reader of these exact texts can answer correctly. Do not aim for "moderate challenge" or open-ended reflection — aim for source-dependent specificity and verifiable answers.
 
 ### Context Fields:
 - `<title>`: Document context
@@ -293,8 +323,8 @@ Perform careful analysis within `<document_analysis>` XML tags:
 2. **Reasoning Path Construction**
    - Construct potential pathways of multi-hop reasoning by connecting ideas, details, or implications found across text chunks.
 
-3. **Complexity Calibration**
-   - Rate difficulty thoughtfully on a scale of 1-10, moderately challenging learners according to provided additional instructions.
+3. **Specificity Calibration**
+   - Rate difficulty (1-10) by how strongly the question depends on combining specific facts from these chunks: higher when only a reader of these texts could answer, lower when a generalist could guess. Discard questions answerable without the document.
 
 4. **Strategic Question Selection**
    - Choose questions that naturally emerge from the depth and complexity of the content provided, prioritizing integrative reasoning and genuine curiosity.
@@ -302,24 +332,15 @@ Perform careful analysis within `<document_analysis>` XML tags:
 ## Question Generation Guidelines
 
 ### Question Characteristics
-- **Multi-Hop Integration**: Questions should naturally require integration across multiple chunks, demonstrating clear interconnected reasoning.
-- **Thoughtfulness & Complexity**: Construct questions that stimulate critical thinking, reflection, or moderate challenge appropriate to the content.
-- **Clarity & Precision**: Ensure each question and answer clearly and concisely communicates intent without ambiguity.
-- **Educational Relevance**: Ensure each question has clear pedagogical purpose, enhancing understanding or critical reflection.
-- **Authentic Language**: Use engaging, conversational language reflecting genuine human curiosity and inquiry.
+- **Multi-Hop Source Dependency**: Questions must require combining two or more SPECIFIC facts stated across the chunks. A model without these exact texts must be unable to answer from general knowledge.
+- **Verifiable Answer**: The answer must be concrete and checkable against the chunks (facts, values, names, short enumerations), not an open-ended essay.
+- **Closed-Book, Not Reasoning**: Avoid generic framings ("what are the benefits of…", "how does … improve …", "why is … important") that a capable model answers without the document.
+- **Clarity & Precision**: Each question and answer communicates intent concisely and unambiguously.
+- **Discriminating**: Favor combinations of specific terminology, steps, counts, components, or thresholds unique to these texts.
 
-### Suggested Question Types
-(Use naturally, as fitting to the content complexity)
-- Analytical
-- Application-based
-- Clarification
-- Counterfactual
-- Conceptual
-- True-False
-- Factual
-- Open-ended
-- False-premise
-- Edge-case
+### Question Types (in priority order)
+Strongly prefer: Factual, Clarification, Edge-case, True-False, False-premise — each anchored to specific stated facts that must be combined across chunks.
+Avoid (answerable without the document): Analytical, Conceptual, Application-based, Counterfactual, Open-ended.
 
 
 ## **Filtering Irrelevant Content**:
@@ -335,13 +356,11 @@ Perform careful analysis within `<document_analysis>` XML tags:
 
 
 MULTI_HOP_QUESTION_GENERATION_SYSTEM_FOOTER = """## Important Notes
-- Prioritize depth and thoughtfulness in your reasoning paths.
-- Allow natural complexity to guide question formulation, aiming for moderate challenge.
-- Precisely cite verbatim excerpts from text chunks.
-- Clearly communicate your thought process for integrative reasoning.
+- Prioritize source-dependent specificity: each question must require combining concrete facts stated across the chunks.
+- Precisely cite verbatim excerpts from the text chunks for every fact used.
+- In "thought_process", state which specific facts from which chunks are combined and why a model without these texts could not answer.
 - Adhere strictly to JSON formatting and Pydantic validation requirements.
-- Generate questions that genuinely inspire deeper reflection or meaningful exploration of the provided content.
-- When generating questions, NEVER include phrases like 'as per the text,' 'according to the document,' or any similar explicit references. Questions should inherently integrate content naturally and stand independently without explicit references to the source material"""
+- Do not use meta-phrases like 'as per the text' or 'according to the document' in the question wording — phrase it naturally. This is about phrasing only: the question's ANSWER must still depend on these specific sources, not on general knowledge."""
 
 MULTI_HOP_QUESTION_GENERATION_SYSTEM_PROMPT = (
     MULTI_HOP_QUESTION_GENERATION_SYSTEM_HEADER
@@ -543,22 +562,10 @@ JUDGE_ANSWER_USER_PROMPT = """<document_summary>
 {answer_b}
 </answer_b>"""
 
-CHUNK_SUMMARIZATION_USER_PROMPT = """\
-You are an expert note-taker.  Summarise the following document *chunk* in \
-10-12 crisp sentences capturing only the information that will matter for a \
-later global summary.
-
-<chunk>
-{chunk}
-</chunk>
-
-Wrap your output inside <chunk_summary> tags."""
-
 COMBINE_SUMMARIES_USER_PROMPT = """\
-You will receive a bullet-list of chunk-level summaries from the *same* \
+You will receive a list of chunk-level summaries from the *same* \
 document.  Combine them into a single, well-structured paragraph that reads \
-naturally and eliminates redundancy.  Keep the final answer under 1/3rd of the \
-original combined length.
+naturally and eliminates redundancy.
 
 <chunk_summaries>
 {chunk_summaries}

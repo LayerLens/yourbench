@@ -18,7 +18,7 @@ to populate a final dataset with the following columns:
 8) chunk_ids               (List[str]) - The chunk ID(s) used in forming the question.
 9) question_generating_model (str) - The HF model ID that generated this question.
 10) chunks                 (List[str]) - The actual chunk text(s) the question came from.
-11) document               (str)  - The entire document text.
+11) document               (str)  - The entire document text (can be excluded with include_document_text=false).
 
 Configuration Example:
 ----------------------
@@ -29,13 +29,14 @@ pipeline:
     multi_hop_subset: multi_hop_questions_deduplicated
     chunked_subset: chunked_documents
     output_subset: lighteval
+    include_document_text: false  # Optional: Set to false to exclude full document text (saves memory)
 
 Usage:
 ------
 1. Load single-shot and multi-hop question subsets.
 2. Merge them into a single dataset, marking 'kind' as "single_shot" or "multi_hop."
 3. For each question row, look up the relevant chunks in the chunked dataset to
-   populate 'chunks' and the full 'document' text.
+   populate 'chunks' and the full 'document' text (if include_document_text is true).
 4. Save final dataset to HF or local path as configured.
 """
 
@@ -76,6 +77,7 @@ def run(config: Dict[str, Any]) -> None:
             - config["pipeline"]["lighteval"]["multi_hop_subset"]   (str): Subset containing multi-hop questions.
             - config["pipeline"]["lighteval"]["chunked_subset"]     (str): Subset containing chunked documents.
             - config["pipeline"]["lighteval"]["output_subset"]      (str): Subset name for saving final dataset.
+            - config["pipeline"]["lighteval"]["include_document_text"] (bool, optional): Whether to include full document text in the final dataset. Default is True.
 
     Returns:
         None. The merged dataset is saved to disk or HF Hub as configured.
@@ -87,9 +89,7 @@ def run(config: Dict[str, Any]) -> None:
 
     logger.info("Saving lighteval compatible dataset")
 
-    # ----------------------------------------
-    # 2) Load datasets
-    # ----------------------------------------
+    # Load datasets
     try:
         single_shot_ds = custom_load_dataset(config=config, subset="single_shot_questions")
         logger.info(f"Loaded single-shot Q subset single_shot_questions with {len(single_shot_ds)} rows.")
@@ -123,15 +123,7 @@ def run(config: Dict[str, Any]) -> None:
         logger.error("No data in single-shot or multi-hop datasets. Exiting.")
         return
 
-    # ----------------------------------------
-    # 3) Prepare lookups from chunked dataset
-    # ----------------------------------------
-    # We'll store: doc_id -> (document_text, chunk_id -> chunk_text).
-    # chunked_ds typically has the following columns:
-    #  - document_id (str)
-    #  - document_text (str)
-    #  - chunks (list of dicts with {chunk_id, chunk_text})
-    # Possibly also "multihop_chunks" but we only need single-hop "chunks".
+    # Prepare lookups from chunked dataset
     doc_meta_map = {}
     for row in chunked_ds:
         doc_id = row.get("document_id", "")
@@ -149,9 +141,12 @@ def run(config: Dict[str, Any]) -> None:
         if doc_id in doc_meta_map:
             doc_meta_map[doc_id].update({"document_summary": row.get("document_summary")})
 
-    # ----------------------------------------
-    # 4) Helper functions to transform a row
-    # ----------------------------------------
+    # Check if we should include document text
+    include_document_text = stage_cfg.get("include_document_text", True)
+    if not include_document_text:
+        logger.info("Document text will be excluded from the final dataset (include_document_text=False)")
+
+    # Helper functions to transform a row
     def make_single_shot_record(row: Dict[str, Any]) -> Dict[str, Any]:
         """
         Transform a single-shot question row into a standardized dictionary
@@ -159,13 +154,10 @@ def run(config: Dict[str, Any]) -> None:
         """
         doc_id: str = row.get("document_id", "")
         chunk_id: str = row.get("chunk_id", "")
-        # ground_truth is row["self_answer"]
-        # question_category is row["self_assessed_question_type"]
-        # question => row["question"], etc.
 
         # Grab doc meta
         doc_meta = doc_meta_map.get(doc_id, {})
-        doc_text = doc_meta.get("document_text", "")
+        doc_text = doc_meta.get("document_text", "") if include_document_text else ""
         doc_summary = doc_meta.get("document_summary", "")
         chunk_text_map = doc_meta.get("chunks_map", {})
         # chunk text is chunk_text_map[chunk_id] if it exists
@@ -173,8 +165,17 @@ def run(config: Dict[str, Any]) -> None:
 
         # if multiple choice question convert to number
         gold = row.get("self_answer", "")
-        if row.get("choices"):
-            gold = [ord(gold) - ord("A")]
+        if not gold:
+            logger.warning("Row has empty answer line")
+
+        stage_cfg = config.get("pipeline", {}).get("single_shot_question_generation", {})
+        if stage_cfg.get("question_mode") == "multi-choice":
+            if not gold:
+                gold = [0]
+            else:
+                gold = [ord(gold) - ord("A")]
+        else:
+            gold = [gold]
 
         return {
             "question": row.get("question", ""),
@@ -203,7 +204,7 @@ def run(config: Dict[str, Any]) -> None:
         # e.g. row["source_chunk_ids"]: List[str]
         chunk_ids: List[str] = row.get("source_chunk_ids", [])
         doc_meta = doc_meta_map.get(doc_id, {})
-        doc_text = doc_meta.get("document_text", "")
+        doc_text = doc_meta.get("document_text", "") if include_document_text else ""
         doc_summary = doc_meta.get("document_summary", "")
         chunk_text_map = doc_meta.get("chunks_map", {})
 
@@ -216,9 +217,17 @@ def run(config: Dict[str, Any]) -> None:
 
         # if multiple choice question convert to number
         gold = row.get("self_answer", "")
-        if row.get("choices"):
-            gold = [ord(gold) - ord("A")]
+        if not gold:
+            logger.warning("Row has empty answer line")
 
+        stage_cfg = config.get("pipeline", {}).get("single_shot_question_generation", {})
+        if stage_cfg.get("question_mode") == "multi-choice":
+            if not gold:
+                gold = [0]
+            else:
+                gold = [ord(gold) - ord("A")]
+        else:
+            gold = [gold]
         return {
             "question": row.get("question", ""),
             "additional_instructions": row.get("additional_instructions", ""),
@@ -237,42 +246,25 @@ def run(config: Dict[str, Any]) -> None:
             "document_summary": doc_summary,
         }
 
-    # ----------------------------------------
-    # 5) Convert each dataset to final records
-    # ----------------------------------------
-    combined_records = []
-
-    for row in single_shot_ds:
-        record = make_single_shot_record(row)
-        combined_records.append(record)
-
-    for row in multi_hop_ds:
-        record = make_multi_hop_record(row)
-        combined_records.append(record)
+    # Convert each dataset to final records
+    combined_records = [
+        *[make_single_shot_record(row) for row in single_shot_ds],
+        *[make_multi_hop_record(row) for row in multi_hop_ds],
+    ]
 
     if not combined_records:
         logger.warning("No final records to merge in lighteval. Exiting.")
         return
 
-    # ----------------------------------------
-    # 6) Create a Hugging Face Dataset
-    # ----------------------------------------
+    # Create a Hugging Face Dataset
     logger.info(f"Assembling final dataset with {len(combined_records)} rows.")
     try:
-        # Convert to column-wise dict for HF Dataset
-        col_names = list(combined_records[0].keys())
-        final_dict = {c: [] for c in col_names}
-        for rec in combined_records:
-            for c in col_names:
-                final_dict[c].append(rec[c])
-        final_ds = Dataset.from_dict(final_dict)
+        final_ds = Dataset.from_list(combined_records)
 
     except Exception as ds_error:
-        logger.error(f"Failed to create final dataset object: {ds_error}")
+        logger.exception("Failed to create final dataset object")
         return
 
-    # ----------------------------------------
-    # 7) Save dataset
-    # ----------------------------------------
+    # Save dataset
     custom_save_dataset(dataset=final_ds, config=config, subset="lighteval")
     logger.success("Lighteval dataset saved successfully.")

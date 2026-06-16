@@ -180,7 +180,8 @@ pipeline:
   chunking:
     run: true
     chunking_configuration:
-      chunking_mode: fast_chunking   # "fast_chunking" or "semantic_chunking"
+      # chunking_mode: fast_chunking   # "fast_chunking" or "semantic_chunking"
+      # WARNING: SEMANTIC CHUNKING IS TEMPORARILY REMOVED AFTER v0.3.1. 
       l_max_tokens: 128              # Each chunk’s maximum token length
       token_overlap: 0               # Overlap between chunks in token-based splitting
       encoding_name: cl100k_base     # Tokenizer name for measuring token lengths
@@ -208,7 +209,7 @@ pipeline:
     # additional_instructions: "Generate factual, short-answer questions at a college level."
 
     # Control the format of generated questions:
-    # question_type: "open-ended"   # "open-ended" (default): model generates the answer to the question
+    # question_mode: "open-ended"   # "open-ended" (default): model generates the answer to the question
     #                               # "multi-choice": model creates options (A), (B), (C), (D) and selects the correct one
 
     # If your documents are large, you can randomly sample chunks to reduce cost:
@@ -222,7 +223,7 @@ pipeline:
     # additional_instructions: "Try to integrate multiple pieces of evidence across chunks to create deeper questions."
 
     # Control the format of generated questions:
-    # question_type: "open-ended"   # "open-ended" (default): model generates the answer to the question
+    # question_mode: "open-ended"   # "open-ended" (default): model generates the answer to the question
     #                               # "multi-choice": model creates options (A), (B), (C), (D) and selects the correct one
 
     # Similarly, you can sample the multi-hop chunks to cut down on inference:
@@ -237,6 +238,7 @@ pipeline:
   # quick or “lightweight” downstream evaluations.
   lighteval:
     run: true
+    include_document_text: false  # Set to false to exclude full document text from the dataset (saves memory)
 
   # 8) CITATION_SCORE_FILTERING
   # Finally, runs fuzzy-match scoring on each question’s “citations” vs. the
